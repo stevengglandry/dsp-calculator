@@ -36,7 +36,18 @@ The app is configured for GitHub Pages at:
 https://stevengglandry.github.io/dsp-calculator/
 ```
 
-Pushing to `main` runs `.github/workflows/pages.yml`, builds the static app, and deploys `dist`.
+The current repository is published from the `gh-pages` branch because the local GitHub token does not have the `workflow` scope required to push GitHub Actions workflow files. The branch contains the built `dist` output.
+
+To redeploy manually:
+
+```bash
+npm run lint
+npm test
+npm run build
+# copy dist contents to the gh-pages branch and push it
+```
+
+If the GitHub token is refreshed with `workflow` scope later, this can be switched to an Actions-based Pages workflow.
 
 ## Data Attribution
 
