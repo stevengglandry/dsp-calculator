@@ -1,4 +1,13 @@
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
+} from 'react'
 import {
   ArrowDown,
   ArrowUp,
@@ -476,21 +485,40 @@ interface GraphLayoutEdge {
   to: GraphLayoutNode
 }
 
+interface GraphPoint {
+  x: number
+  y: number
+}
+
+const graphNodeWidth = 146
+const graphNodeHeight = 62
+const graphColumnGap = 166
+const graphRowGap = 78
+const graphPadding = 18
+const graphMaxColumns = 6
+const graphMinZoom = 0.55
+const graphMaxZoom = 1.9
+const graphZoomStep = 0.1
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
 function buildGraphLayout(nodes: PlannerNode[]) {
   const visibleNodes = nodes.filter((node) => node.machineCount > 0 || node.warning).slice(0, 32)
-  const maxDepth = Math.min(
-    6,
+  const maxColumn = Math.min(
+    graphMaxColumns,
     visibleNodes.reduce((max, node) => Math.max(max, node.depth), 0),
   )
-  const rowsByDepth = new Map<number, number>()
+  const rowsByColumn = new Map<number, number>()
   const layoutNodes: GraphLayoutNode[] = visibleNodes.map((node) => {
-    const column = Math.min(node.depth, maxDepth)
-    const row = rowsByDepth.get(column) ?? 0
-    rowsByDepth.set(column, row + 1)
+    const column = maxColumn - Math.min(node.depth, maxColumn)
+    const row = rowsByColumn.get(column) ?? 0
+    rowsByColumn.set(column, row + 1)
     return {
       node,
-      x: 18 + column * 166,
-      y: 18 + row * 78,
+      x: graphPadding + column * graphColumnGap,
+      y: graphPadding + row * graphRowGap,
     }
   })
   const layoutNodeById = new Map(layoutNodes.map((layoutNode) => [layoutNode.node.id, layoutNode] as const))
@@ -501,27 +529,204 @@ function buildGraphLayout(nodes: PlannerNode[]) {
     const parentLayoutNode = layoutNodeById.get(layoutNode.node.parentNodeId)
     if (!parentLayoutNode) continue
     layoutEdges.push({
-      id: `${parentLayoutNode.node.id}-${layoutNode.node.id}`,
-      from: parentLayoutNode,
-      to: layoutNode,
+      id: `${layoutNode.node.id}-${parentLayoutNode.node.id}`,
+      from: layoutNode,
+      to: parentLayoutNode,
     })
   }
 
-  const maxRows = Math.max(1, ...rowsByDepth.values())
+  const maxRows = Math.max(1, ...rowsByColumn.values())
   return {
     edges: layoutEdges,
-    height: Math.max(515, 36 + maxRows * 78),
+    height: Math.max(515, graphPadding * 2 + maxRows * graphRowGap),
     nodes: layoutNodes,
-    width: 42 + (maxDepth + 1) * 166,
+    structureKey: visibleNodes.map((node) => `${node.id}:${node.itemId}:${node.parentNodeId ?? ''}`).join('|'),
+    width: graphPadding * 2 + (maxColumn + 1) * graphColumnGap,
   }
 }
 
 function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpenRecipe: (itemId: string) => void }) {
+  const graphViewRef = useRef<HTMLDivElement>(null)
+  const dragStateRef = useRef<{
+    id: string
+    moved: boolean
+    pointerId: number | null
+    startClientX: number
+    startClientY: number
+    startX: number
+    startY: number
+  } | null>(null)
+  const suppressClickRef = useRef(false)
   const layout = useMemo(() => buildGraphLayout(nodes), [nodes])
+  const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
+  const [nodePositionState, setNodePositionState] = useState<{ positions: Record<string, GraphPoint>; structureKey: string }>({
+    positions: {},
+    structureKey: '',
+  })
+  const [zoom, setZoom] = useState(1)
+  const nodePositions = useMemo(
+    () => (nodePositionState.structureKey === layout.structureKey ? nodePositionState.positions : {}),
+    [layout.structureKey, nodePositionState.positions, nodePositionState.structureKey],
+  )
+
+  const positionedNodes = useMemo(
+    () =>
+      layout.nodes.map((layoutNode) => ({
+        ...layoutNode,
+        ...(nodePositions[layoutNode.node.id] ?? {}),
+      })),
+    [layout.nodes, nodePositions],
+  )
+  const positionedNodeById = useMemo(() => new Map(positionedNodes.map((layoutNode) => [layoutNode.node.id, layoutNode] as const)), [positionedNodes])
+  const positionedEdges = useMemo(
+    () =>
+      layout.edges.flatMap((edge) => {
+        const from = positionedNodeById.get(edge.from.node.id)
+        const to = positionedNodeById.get(edge.to.node.id)
+        return from && to ? [{ ...edge, from, to }] : []
+      }),
+    [layout.edges, positionedNodeById],
+  )
+
+  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
+    if (!event.ctrlKey) return
+    event.preventDefault()
+
+    const graphView = graphViewRef.current
+    if (!graphView) return
+
+    const rect = graphView.getBoundingClientRect()
+    const pointerX = event.clientX - rect.left
+    const pointerY = event.clientY - rect.top
+    const scrollX = graphView.scrollLeft + pointerX
+    const scrollY = graphView.scrollTop + pointerY
+    const direction = event.deltaY < 0 ? 1 : -1
+
+    setZoom((currentZoom) => {
+      const nextZoom = clamp(Number((currentZoom + direction * graphZoomStep).toFixed(2)), graphMinZoom, graphMaxZoom)
+      if (nextZoom === currentZoom) return currentZoom
+
+      const zoomRatio = nextZoom / currentZoom
+      requestAnimationFrame(() => {
+        graphView.scrollLeft = scrollX * zoomRatio - pointerX
+        graphView.scrollTop = scrollY * zoomRatio - pointerY
+      })
+
+      return nextZoom
+    })
+  }
+
+  function startNodeDrag(nodeId: string, x: number, y: number, clientX: number, clientY: number, pointerId: number | null) {
+    if (dragStateRef.current) return
+    dragStateRef.current = {
+      id: nodeId,
+      moved: false,
+      pointerId,
+      startClientX: clientX,
+      startClientY: clientY,
+      startX: x,
+      startY: y,
+    }
+    setDraggingNodeId(nodeId)
+  }
+
+  function handleNodePointerDown(event: ReactPointerEvent<HTMLButtonElement>, nodeId: string, x: number, y: number) {
+    if (event.button !== 0) return
+
+    startNodeDrag(nodeId, x, y, event.clientX, event.clientY, event.pointerId)
+
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // Dragging still works through graph-level pointer events when capture is unavailable.
+    }
+  }
+
+  function handleNodeMouseDown(event: ReactMouseEvent<HTMLButtonElement>, nodeId: string, x: number, y: number) {
+    if (event.button !== 0) return
+    startNodeDrag(nodeId, x, y, event.clientX, event.clientY, null)
+  }
+
+  function updateDraggedNode(clientX: number, clientY: number) {
+    const dragState = dragStateRef.current
+    if (!dragState) return
+
+    const deltaX = (clientX - dragState.startClientX) / zoom
+    const deltaY = (clientY - dragState.startClientY) / zoom
+    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+      dragState.moved = true
+    }
+
+    const nextPosition = {
+      x: clamp(dragState.startX + deltaX, graphPadding, Math.max(graphPadding, layout.width - graphNodeWidth - graphPadding)),
+      y: clamp(dragState.startY + deltaY, graphPadding, Math.max(graphPadding, layout.height - graphNodeHeight - graphPadding)),
+    }
+    setNodePositionState((currentPositionState) => {
+      const currentPositions = currentPositionState.structureKey === layout.structureKey ? currentPositionState.positions : {}
+      return {
+        positions: {
+          ...currentPositions,
+          [dragState.id]: nextPosition,
+        },
+        structureKey: layout.structureKey,
+      }
+    })
+  }
+
+  function handleGraphPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
+    const dragState = dragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) return
+    updateDraggedNode(event.clientX, event.clientY)
+  }
+
+  function handleGraphMouseMove(event: ReactMouseEvent<HTMLDivElement>) {
+    const dragState = dragStateRef.current
+    if (!dragState) return
+    updateDraggedNode(event.clientX, event.clientY)
+  }
+
+  function finishNodeDrag(event: ReactPointerEvent<HTMLDivElement>) {
+    const dragState = dragStateRef.current
+    if (!dragState || dragState.pointerId !== event.pointerId) return
+
+    suppressClickRef.current = dragState.moved
+    dragStateRef.current = null
+    setDraggingNodeId(null)
+  }
+
+  function finishMouseDrag() {
+    const dragState = dragStateRef.current
+    if (!dragState) return
+
+    suppressClickRef.current = dragState.moved
+    dragStateRef.current = null
+    setDraggingNodeId(null)
+  }
+
+  function handleNodeClick(itemId: string) {
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false
+      return
+    }
+    onOpenRecipe(itemId)
+  }
 
   return (
-    <div className="graph-view" aria-label="Production graph">
-      <div className="graph-canvas" style={{ width: `${layout.width}px`, height: `${layout.height}px` }}>
+    <div
+      className="graph-view"
+      aria-label="Production graph"
+      data-dragging={draggingNodeId ?? ''}
+      data-zoom={zoom.toFixed(2)}
+      onMouseMove={handleGraphMouseMove}
+      onMouseUp={finishMouseDrag}
+      onPointerCancel={finishNodeDrag}
+      onPointerMove={handleGraphPointerMove}
+      onPointerUp={finishNodeDrag}
+      onWheel={handleWheel}
+      ref={graphViewRef}
+    >
+      <div className="graph-canvas" style={{ width: `${layout.width * zoom}px`, height: `${layout.height * zoom}px` }}>
+        <div className="graph-stage" style={{ width: `${layout.width}px`, height: `${layout.height}px`, transform: `scale(${zoom})` }}>
         <svg className="graph-edges" viewBox={`0 0 ${layout.width} ${layout.height}`} aria-hidden="true">
           <defs>
             <linearGradient id="graph-edge-gradient" x1="0" y1="0" x2="1" y2="0">
@@ -529,11 +734,11 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
               <stop offset="100%" stopColor="rgba(84, 217, 229, 0.58)" />
             </linearGradient>
           </defs>
-          {layout.edges.map((edge) => {
-            const startX = edge.from.x + 146
-            const startY = edge.from.y + 31
+          {positionedEdges.map((edge) => {
+            const startX = edge.from.x + graphNodeWidth
+            const startY = edge.from.y + graphNodeHeight / 2
             const endX = edge.to.x
-            const endY = edge.to.y + 31
+            const endY = edge.to.y + graphNodeHeight / 2
             return (
               <path
                 key={edge.id}
@@ -545,15 +750,22 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
             )
           })}
         </svg>
-        {layout.nodes.map(({ node, x, y }) => {
+        {positionedNodes.map(({ node, x, y }) => {
           const item = dspData.itemById.get(node.itemId)
           return (
             <button
               key={node.id}
-              className={`graph-node ${node.machineCount === 0 ? 'raw' : ''}`}
+              className={`graph-node ${node.machineCount === 0 ? 'raw' : ''} ${draggingNodeId === node.id ? 'dragging' : ''}`}
+              data-depth={node.depth}
+              data-item-id={node.itemId}
+              data-node-id={node.id}
+              data-x={x.toFixed(1)}
+              data-y={y.toFixed(1)}
               type="button"
               style={{ transform: `translate(${x}px, ${y}px)` }}
-              onClick={() => onOpenRecipe(node.itemId)}
+              onClick={() => handleNodeClick(node.itemId)}
+              onMouseDown={(event) => handleNodeMouseDown(event, node.id, x, y)}
+              onPointerDown={(event) => handleNodePointerDown(event, node.id, x, y)}
               title={item?.name ?? node.itemId}
             >
               <IconSprite icon={dspData.iconById.get(node.itemId)} label={itemName(node.itemId)} size={28} />
@@ -564,6 +776,7 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
             </button>
           )
         })}
+        </div>
       </div>
     </div>
   )

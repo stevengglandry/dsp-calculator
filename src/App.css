@@ -501,6 +501,7 @@ kbd {
   min-height: 515px;
   padding: 12px 13px;
   overflow: auto;
+  overscroll-behavior: contain;
   scrollbar-color: rgba(80, 105, 139, 0.65) rgba(7, 12, 21, 0.65);
 }
 
@@ -515,6 +516,13 @@ kbd {
     radial-gradient(circle at 12% 16%, rgba(77, 213, 228, 0.12), transparent 22rem),
     rgba(7, 13, 23, 0.62);
   background-size: 28px 28px, 28px 28px, auto, auto;
+}
+
+.graph-stage {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
 }
 
 .graph-edges {
@@ -541,6 +549,9 @@ kbd {
   border-radius: 8px;
   background: linear-gradient(180deg, rgba(18, 28, 43, 0.98), rgba(10, 18, 31, 0.98));
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
 }
 
 .graph-node.raw {
@@ -551,6 +562,15 @@ kbd {
 .graph-node:hover {
   border-color: rgba(82, 211, 224, 0.72);
   background: linear-gradient(180deg, rgba(24, 38, 58, 0.98), rgba(13, 24, 40, 0.98));
+}
+
+.graph-node.dragging {
+  z-index: 2;
+  border-color: rgba(111, 244, 255, 0.88);
+  cursor: grabbing;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.36),
+    0 0 0 1px rgba(111, 244, 255, 0.24);
 }
 
 .graph-node-copy {
