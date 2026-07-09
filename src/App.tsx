@@ -588,6 +588,16 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
     [layout.edges, positionedNodeById],
   )
 
+  const stageWidth = useMemo(() => {
+    const maxNodeX = positionedNodes.reduce((max, n) => Math.max(max, n.x), 0)
+    return Math.max(layout.width, maxNodeX + graphNodeWidth + graphPadding)
+  }, [layout.width, positionedNodes])
+
+  const stageHeight = useMemo(() => {
+    const maxNodeY = positionedNodes.reduce((max, n) => Math.max(max, n.y), 0)
+    return Math.max(layout.height, maxNodeY + graphNodeHeight + graphPadding)
+  }, [layout.height, positionedNodes])
+
   useEffect(() => {
     const graphView = graphViewRef.current
     if (!graphView) return
@@ -646,9 +656,11 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
         moved = true
       }
 
+      const maxDragX = Math.max(currentLayout.width + 1500, startX)
+      const maxDragY = Math.max(currentLayout.height + 1000, startY)
       const nextPosition = {
-        x: clamp(startX + deltaX, graphPadding, Math.max(graphPadding, currentLayout.width - graphNodeWidth - graphPadding)),
-        y: clamp(startY + deltaY, graphPadding, Math.max(graphPadding, currentLayout.height - graphNodeHeight - graphPadding)),
+        x: clamp(startX + deltaX, graphPadding, maxDragX - graphNodeWidth - graphPadding),
+        y: clamp(startY + deltaY, graphPadding, maxDragY - graphNodeHeight - graphPadding),
       }
 
       setNodePositionState((currentPositionState) => {
@@ -700,28 +712,37 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
       data-zoom={zoom.toFixed(2)}
       ref={graphViewRef}
     >
-      <div className="graph-canvas" style={{ width: `${layout.width * zoom}px`, height: `${layout.height * zoom}px` }}>
-        <div className="graph-stage" style={{ width: `${layout.width}px`, height: `${layout.height}px`, transform: `scale(${zoom})` }}>
-        <svg className="graph-edges" viewBox={`0 0 ${layout.width} ${layout.height}`} aria-hidden="true">
-          <defs>
-            <linearGradient id="graph-edge-gradient" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0%" stopColor="rgba(84, 217, 229, 0.18)" />
-              <stop offset="100%" stopColor="rgba(84, 217, 229, 0.58)" />
-            </linearGradient>
-          </defs>
+      <div className="graph-canvas" style={{ width: `${stageWidth * zoom}px`, height: `${stageHeight * zoom}px` }}>
+        <div className="graph-stage" style={{ width: `${stageWidth}px`, height: `${stageHeight}px`, transform: `scale(${zoom})` }}>
+        <svg className="graph-edges" viewBox={`0 0 ${stageWidth} ${stageHeight}`} aria-hidden="true">
           {positionedEdges.map((edge) => {
             const startX = edge.from.x + graphNodeWidth
             const startY = edge.from.y + graphNodeHeight / 2
             const endX = edge.to.x
             const endY = edge.to.y + graphNodeHeight / 2
+            const gradientId = `gradient-${edge.id}`
             return (
-              <path
-                key={edge.id}
-                d={`M ${startX} ${startY} C ${startX + 42} ${startY}, ${endX - 42} ${endY}, ${endX} ${endY}`}
-                fill="none"
-                stroke="url(#graph-edge-gradient)"
-                strokeWidth="2"
-              />
+              <g key={edge.id}>
+                <defs>
+                  <linearGradient
+                    id={gradientId}
+                    gradientUnits="userSpaceOnUse"
+                    x1={startX}
+                    y1={startY}
+                    x2={endX}
+                    y2={endY}
+                  >
+                    <stop offset="0%" stopColor="rgba(84, 217, 229, 0.18)" />
+                    <stop offset="100%" stopColor="rgba(84, 217, 229, 0.58)" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d={`M ${startX} ${startY} C ${startX + 42} ${startY}, ${endX - 42} ${endY}, ${endX} ${endY}`}
+                  fill="none"
+                  stroke={`url(#${gradientId})`}
+                  strokeWidth="2"
+                />
+              </g>
             )
           })}
         </svg>
