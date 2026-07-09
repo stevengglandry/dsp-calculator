@@ -545,7 +545,6 @@ function buildGraphLayout(nodes: PlannerNode[]) {
 
 function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpenRecipe: (itemId: string) => void }) {
   const graphViewRef = useRef<HTMLDivElement>(null)
-  const suppressClickRef = useRef(false)
   const layout = useMemo(() => buildGraphLayout(nodes), [nodes])
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
   const [nodePositionState, setNodePositionState] = useState<{ positions: Record<string, GraphPoint>; structureKey: string }>({
@@ -686,7 +685,6 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
       document.removeEventListener('pointerup', handlePointerUp)
       document.removeEventListener('pointercancel', handlePointerUp)
 
-      suppressClickRef.current = moved
       setDraggingNodeId(null)
     }
 
@@ -694,14 +692,6 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
     document.addEventListener('pointermove', handlePointerMove)
     document.addEventListener('pointerup', handlePointerUp)
     document.addEventListener('pointercancel', handlePointerUp)
-  }
-
-  function handleNodeClick(itemId: string) {
-    if (suppressClickRef.current) {
-      suppressClickRef.current = false
-      return
-    }
-    onOpenRecipe(itemId)
   }
 
   return (
@@ -759,7 +749,6 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
               data-y={y.toFixed(1)}
               type="button"
               style={{ transform: `translate(${x}px, ${y}px)` }}
-              onClick={() => handleNodeClick(node.itemId)}
               onPointerDown={(event) => handleNodePointerDown(event, node.id, x, y)}
               onDragStart={(event) => event.preventDefault()}
               title={item?.name ?? node.itemId}
