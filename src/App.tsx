@@ -4,9 +4,7 @@ import {
   useMemo,
   useRef,
   useState,
-  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type WheelEvent as ReactWheelEvent,
 } from 'react'
 import {
   ArrowDown,
@@ -547,15 +545,6 @@ function buildGraphLayout(nodes: PlannerNode[]) {
 
 function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpenRecipe: (itemId: string) => void }) {
   const graphViewRef = useRef<HTMLDivElement>(null)
-  const dragStateRef = useRef<{
-    id: string
-    moved: boolean
-    pointerId: number | null
-    startClientX: number
-    startClientY: number
-    startX: number
-    startY: number
-  } | null>(null)
   const suppressClickRef = useRef(false)
   const layout = useMemo(() => buildGraphLayout(nodes), [nodes])
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
@@ -564,6 +553,17 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
     structureKey: '',
   })
   const [zoom, setZoom] = useState(1)
+
+  const zoomRef = useRef(zoom)
+  useEffect(() => {
+    zoomRef.current = zoom
+  }, [zoom])
+
+  const layoutRef = useRef(layout)
+  useEffect(() => {
+    layoutRef.current = layout
+  }, [layout])
+
   const nodePositions = useMemo(
     () => (nodePositionState.structureKey === layout.structureKey ? nodePositionState.positions : {}),
     [layout.structureKey, nodePositionState.positions, nodePositionState.structureKey],
@@ -588,119 +588,100 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
     [layout.edges, positionedNodeById],
   )
 
-  function handleWheel(event: ReactWheelEvent<HTMLDivElement>) {
-    if (!event.ctrlKey) return
-    event.preventDefault()
-
+  useEffect(() => {
     const graphView = graphViewRef.current
     if (!graphView) return
 
-    const rect = graphView.getBoundingClientRect()
-    const pointerX = event.clientX - rect.left
-    const pointerY = event.clientY - rect.top
-    const scrollX = graphView.scrollLeft + pointerX
-    const scrollY = graphView.scrollTop + pointerY
-    const direction = event.deltaY < 0 ? 1 : -1
+    const handleWheelNative = (event: WheelEvent) => {
+      if (!event.ctrlKey) return
+      event.preventDefault()
 
-    setZoom((currentZoom) => {
-      const nextZoom = clamp(Number((currentZoom + direction * graphZoomStep).toFixed(2)), graphMinZoom, graphMaxZoom)
-      if (nextZoom === currentZoom) return currentZoom
+      const rect = graphView.getBoundingClientRect()
+      const pointerX = event.clientX - rect.left
+      const pointerY = event.clientY - rect.top
+      const scrollX = graphView.scrollLeft + pointerX
+      const scrollY = graphView.scrollTop + pointerY
+      const direction = event.deltaY < 0 ? 1 : -1
 
-      const zoomRatio = nextZoom / currentZoom
-      requestAnimationFrame(() => {
-        graphView.scrollLeft = scrollX * zoomRatio - pointerX
-        graphView.scrollTop = scrollY * zoomRatio - pointerY
+      setZoom((currentZoom) => {
+        const nextZoom = clamp(Number((currentZoom + direction * graphZoomStep).toFixed(2)), graphMinZoom, graphMaxZoom)
+        if (nextZoom === currentZoom) return currentZoom
+
+        const zoomRatio = nextZoom / currentZoom
+        requestAnimationFrame(() => {
+          graphView.scrollLeft = scrollX * zoomRatio - pointerX
+          graphView.scrollTop = scrollY * zoomRatio - pointerY
+        })
+
+        return nextZoom
       })
-
-      return nextZoom
-    })
-  }
-
-  function startNodeDrag(nodeId: string, x: number, y: number, clientX: number, clientY: number, pointerId: number | null) {
-    if (dragStateRef.current) return
-    dragStateRef.current = {
-      id: nodeId,
-      moved: false,
-      pointerId,
-      startClientX: clientX,
-      startClientY: clientY,
-      startX: x,
-      startY: y,
     }
-    setDraggingNodeId(nodeId)
-  }
 
-  function handleNodePointerDown(event: ReactPointerEvent<HTMLButtonElement>, nodeId: string, x: number, y: number) {
+    graphView.addEventListener('wheel', handleWheelNative, { passive: false })
+    return () => {
+      graphView.removeEventListener('wheel', handleWheelNative)
+    }
+  }, [])
+
+  function handleNodePointerDown(event: ReactPointerEvent<HTMLButtonElement>, nodeId: string, startX: number, startY: number) {
     if (event.button !== 0) return
-
-    startNodeDrag(nodeId, x, y, event.clientX, event.clientY, event.pointerId)
 
     try {
       event.currentTarget.setPointerCapture(event.pointerId)
     } catch {
-      // Dragging still works through graph-level pointer events when capture is unavailable.
-    }
-  }
-
-  function handleNodeMouseDown(event: ReactMouseEvent<HTMLButtonElement>, nodeId: string, x: number, y: number) {
-    if (event.button !== 0) return
-    startNodeDrag(nodeId, x, y, event.clientX, event.clientY, null)
-  }
-
-  function updateDraggedNode(clientX: number, clientY: number) {
-    const dragState = dragStateRef.current
-    if (!dragState) return
-
-    const deltaX = (clientX - dragState.startClientX) / zoom
-    const deltaY = (clientY - dragState.startClientY) / zoom
-    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
-      dragState.moved = true
+      // Fallback
     }
 
-    const nextPosition = {
-      x: clamp(dragState.startX + deltaX, graphPadding, Math.max(graphPadding, layout.width - graphNodeWidth - graphPadding)),
-      y: clamp(dragState.startY + deltaY, graphPadding, Math.max(graphPadding, layout.height - graphNodeHeight - graphPadding)),
-    }
-    setNodePositionState((currentPositionState) => {
-      const currentPositions = currentPositionState.structureKey === layout.structureKey ? currentPositionState.positions : {}
-      return {
-        positions: {
-          ...currentPositions,
-          [dragState.id]: nextPosition,
-        },
-        structureKey: layout.structureKey,
+    const startClientX = event.clientX
+    const startClientY = event.clientY
+    let moved = false
+
+    const handlePointerMove = (e: PointerEvent) => {
+      const currentZoom = zoomRef.current
+      const currentLayout = layoutRef.current
+      const deltaX = (e.clientX - startClientX) / currentZoom
+      const deltaY = (e.clientY - startClientY) / currentZoom
+
+      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
+        moved = true
       }
-    })
-  }
 
-  function handleGraphPointerMove(event: ReactPointerEvent<HTMLDivElement>) {
-    const dragState = dragStateRef.current
-    if (!dragState || dragState.pointerId !== event.pointerId) return
-    updateDraggedNode(event.clientX, event.clientY)
-  }
+      const nextPosition = {
+        x: clamp(startX + deltaX, graphPadding, Math.max(graphPadding, currentLayout.width - graphNodeWidth - graphPadding)),
+        y: clamp(startY + deltaY, graphPadding, Math.max(graphPadding, currentLayout.height - graphNodeHeight - graphPadding)),
+      }
 
-  function handleGraphMouseMove(event: ReactMouseEvent<HTMLDivElement>) {
-    const dragState = dragStateRef.current
-    if (!dragState) return
-    updateDraggedNode(event.clientX, event.clientY)
-  }
+      setNodePositionState((currentPositionState) => {
+        const currentPositions = currentPositionState.structureKey === currentLayout.structureKey ? currentPositionState.positions : {}
+        return {
+          positions: {
+            ...currentPositions,
+            [nodeId]: nextPosition,
+          },
+          structureKey: currentLayout.structureKey,
+        }
+      })
+    }
 
-  function finishNodeDrag(event: ReactPointerEvent<HTMLDivElement>) {
-    const dragState = dragStateRef.current
-    if (!dragState || dragState.pointerId !== event.pointerId) return
+    const handlePointerUp = () => {
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId)
+      } catch {
+        // ignore
+      }
 
-    suppressClickRef.current = dragState.moved
-    dragStateRef.current = null
-    setDraggingNodeId(null)
-  }
+      document.removeEventListener('pointermove', handlePointerMove)
+      document.removeEventListener('pointerup', handlePointerUp)
+      document.removeEventListener('pointercancel', handlePointerUp)
 
-  function finishMouseDrag() {
-    const dragState = dragStateRef.current
-    if (!dragState) return
+      suppressClickRef.current = moved
+      setDraggingNodeId(null)
+    }
 
-    suppressClickRef.current = dragState.moved
-    dragStateRef.current = null
-    setDraggingNodeId(null)
+    setDraggingNodeId(nodeId)
+    document.addEventListener('pointermove', handlePointerMove)
+    document.addEventListener('pointerup', handlePointerUp)
+    document.addEventListener('pointercancel', handlePointerUp)
   }
 
   function handleNodeClick(itemId: string) {
@@ -717,12 +698,6 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
       aria-label="Production graph"
       data-dragging={draggingNodeId ?? ''}
       data-zoom={zoom.toFixed(2)}
-      onMouseMove={handleGraphMouseMove}
-      onMouseUp={finishMouseDrag}
-      onPointerCancel={finishNodeDrag}
-      onPointerMove={handleGraphPointerMove}
-      onPointerUp={finishNodeDrag}
-      onWheel={handleWheel}
       ref={graphViewRef}
     >
       <div className="graph-canvas" style={{ width: `${layout.width * zoom}px`, height: `${layout.height * zoom}px` }}>
@@ -764,8 +739,8 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
               type="button"
               style={{ transform: `translate(${x}px, ${y}px)` }}
               onClick={() => handleNodeClick(node.itemId)}
-              onMouseDown={(event) => handleNodeMouseDown(event, node.id, x, y)}
               onPointerDown={(event) => handleNodePointerDown(event, node.id, x, y)}
+              onDragStart={(event) => event.preventDefault()}
               title={item?.name ?? node.itemId}
             >
               <IconSprite icon={dspData.iconById.get(node.itemId)} label={itemName(node.itemId)} size={28} />
