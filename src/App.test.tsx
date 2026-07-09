@@ -15,6 +15,7 @@ describe('DSP Calculator UI', () => {
     expect(screen.getByRole('heading', { name: 'DSP Calculator' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Production Chain' })).toBeInTheDocument()
 
+    await user.click(screen.getByRole('button', { name: 'Tree' }))
     await user.click(screen.getAllByRole('button', { name: /Processor/i })[0])
     expect(screen.getByRole('dialog', { name: 'Select a Recipe' })).toBeInTheDocument()
     expect(screen.getByPlaceholderText('Search item or building')).toBeInTheDocument()
@@ -33,13 +34,13 @@ describe('DSP Calculator UI', () => {
     expect(screen.getAllByText('Universe Matrix').length).toBeGreaterThan(0)
   })
 
-  it('switches from tree to graph view', async () => {
+  it('switches from graph to tree view', async () => {
     const user = userEvent.setup()
     render(<App />)
 
-    await user.click(screen.getByRole('button', { name: 'Graph' }))
+    await user.click(screen.getByRole('button', { name: 'Tree' }))
 
-    expect(screen.getByLabelText('Production graph')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Graph' })).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('Production chain')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Tree' })).toHaveAttribute('aria-pressed', 'true')
   })
 })

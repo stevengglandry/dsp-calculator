@@ -540,7 +540,7 @@ kbd {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 8px;
-  width: 146px;
+  width: 160px;
   min-height: 62px;
   padding: 8px;
   color: #dce6f4;
@@ -577,24 +577,40 @@ kbd {
   min-width: 0;
 }
 
-.graph-node-copy strong,
-.graph-node-copy small {
+.graph-node-copy strong {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.graph-node-copy strong {
   color: #eef5ff;
   font-size: 12px;
   font-weight: 740;
 }
 
-.graph-node-copy small {
+.graph-node-details {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   margin-top: 3px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.graph-node-details small {
   color: var(--cyan);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-node-machine {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: #92a4ba;
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 .chain-node {

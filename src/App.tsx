@@ -404,7 +404,7 @@ interface PlannerPanelProps {
 }
 
 function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
-  const [viewMode, setViewMode] = useState<PlannerViewMode>('tree')
+  const [viewMode, setViewMode] = useState<PlannerViewMode>('graph')
   const tableRows = result.nodes.filter((node) => node.machineCount > 0).slice(0, 14)
 
   return (
@@ -488,9 +488,9 @@ interface GraphPoint {
   y: number
 }
 
-const graphNodeWidth = 146
+const graphNodeWidth = 160
 const graphNodeHeight = 62
-const graphColumnGap = 166
+const graphColumnGap = 180
 const graphRowGap = 78
 const graphPadding = 18
 const graphMaxColumns = 6
@@ -733,6 +733,7 @@ function ProductionGraph({ nodes }: { nodes: PlannerNode[] }) {
         </svg>
         {positionedNodes.map(({ node, x, y }) => {
           const item = dspData.itemById.get(node.itemId)
+          const machine = node.machineId ? dspData.itemById.get(node.machineId) : undefined
           return (
             <button
               key={node.id}
@@ -751,7 +752,15 @@ function ProductionGraph({ nodes }: { nodes: PlannerNode[] }) {
               <IconSprite icon={dspData.iconById.get(node.itemId)} label={itemName(node.itemId)} size={28} />
               <span className="graph-node-copy">
                 <strong>{item?.name ?? node.itemId}</strong>
-                <small>{formatRate(node.ratePerMinute)}</small>
+                <span className="graph-node-details">
+                  <small>{formatRate(node.ratePerMinute)}</small>
+                  {machine ? (
+                    <span className="graph-node-machine">
+                      <IconSprite icon={dspData.iconById.get(machine.id)} label={machine.name} size={14} />
+                      <span>{formatCount(node.machineCount)}</span>
+                    </span>
+                  ) : null}
+                </span>
               </span>
             </button>
           )
