@@ -430,7 +430,7 @@ function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
           ))}
         </div>
       ) : (
-        <ProductionGraph nodes={result.nodes} onOpenRecipe={onOpenRecipe} />
+        <ProductionGraph nodes={result.nodes} />
       )}
 
       {result.warnings.length > 0 ? (
@@ -543,7 +543,7 @@ function buildGraphLayout(nodes: PlannerNode[]) {
   }
 }
 
-function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpenRecipe: (itemId: string) => void }) {
+function ProductionGraph({ nodes }: { nodes: PlannerNode[] }) {
   const graphViewRef = useRef<HTMLDivElement>(null)
   const layout = useMemo(() => buildGraphLayout(nodes), [nodes])
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null)
@@ -643,17 +643,12 @@ function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpen
 
     const startClientX = event.clientX
     const startClientY = event.clientY
-    let moved = false
 
     const handlePointerMove = (e: PointerEvent) => {
       const currentZoom = zoomRef.current
       const currentLayout = layoutRef.current
       const deltaX = (e.clientX - startClientX) / currentZoom
       const deltaY = (e.clientY - startClientY) / currentZoom
-
-      if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) {
-        moved = true
-      }
 
       const maxDragX = Math.max(currentLayout.width + 1500, startX)
       const maxDragY = Math.max(currentLayout.height + 1000, startY)
