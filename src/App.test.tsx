@@ -32,4 +32,14 @@ describe('DSP Calculator UI', () => {
 
     expect(screen.getAllByText('Universe Matrix').length).toBeGreaterThan(0)
   })
+
+  it('switches from tree to graph view', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+
+    await user.click(screen.getByRole('button', { name: 'Graph' }))
+
+    expect(screen.getByLabelText('Production graph')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Graph' })).toHaveAttribute('aria-pressed', 'true')
+  })
 })

@@ -370,6 +370,8 @@ kbd {
 }
 
 .rail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px 24px;
   gap: 7px;
   min-height: 45px;
   padding: 6px;
@@ -380,10 +382,10 @@ kbd {
 
 .rail-item-button {
   display: flex;
-  flex: 1 1 auto;
   align-items: center;
   gap: 9px;
   min-width: 0;
+  overflow: hidden;
   color: #dce6f4;
   border: 0;
   background: transparent;
@@ -397,6 +399,7 @@ kbd {
 
 .rail-rate {
   width: 54px;
+  max-width: 42px;
   color: var(--cyan);
   text-align: right;
 }
@@ -404,6 +407,7 @@ kbd {
 .row-icon-button {
   width: 24px;
   height: 24px;
+  flex: 0 0 auto;
   color: var(--muted);
 }
 
@@ -490,6 +494,87 @@ kbd {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-color: rgba(80, 105, 139, 0.65) rgba(7, 12, 21, 0.65);
+}
+
+.graph-view {
+  max-height: 515px;
+  min-height: 515px;
+  padding: 12px 13px;
+  overflow: auto;
+  scrollbar-color: rgba(80, 105, 139, 0.65) rgba(7, 12, 21, 0.65);
+}
+
+.graph-canvas {
+  position: relative;
+  min-width: 100%;
+  border: 1px solid rgba(82, 107, 140, 0.28);
+  border-radius: 8px;
+  background:
+    linear-gradient(rgba(89, 113, 148, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(89, 113, 148, 0.08) 1px, transparent 1px),
+    radial-gradient(circle at 12% 16%, rgba(77, 213, 228, 0.12), transparent 22rem),
+    rgba(7, 13, 23, 0.62);
+  background-size: 28px 28px, 28px 28px, auto, auto;
+}
+
+.graph-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.graph-node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: 146px;
+  min-height: 62px;
+  padding: 8px;
+  color: #dce6f4;
+  text-align: left;
+  border: 1px solid rgba(82, 107, 140, 0.52);
+  border-radius: 8px;
+  background: linear-gradient(180deg, rgba(18, 28, 43, 0.98), rgba(10, 18, 31, 0.98));
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+}
+
+.graph-node.raw {
+  border-style: dashed;
+  opacity: 0.9;
+}
+
+.graph-node:hover {
+  border-color: rgba(82, 211, 224, 0.72);
+  background: linear-gradient(180deg, rgba(24, 38, 58, 0.98), rgba(13, 24, 40, 0.98));
+}
+
+.graph-node-copy {
+  min-width: 0;
+}
+
+.graph-node-copy strong,
+.graph-node-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.graph-node-copy strong {
+  color: #eef5ff;
+  font-size: 12px;
+  font-weight: 740;
+}
+
+.graph-node-copy small {
+  margin-top: 3px;
+  color: var(--cyan);
+  font-size: 11px;
 }
 
 .chain-node {
@@ -1061,6 +1146,11 @@ kbd {
   }
 
   .chain-view {
+    min-height: 380px;
+    max-height: 380px;
+  }
+
+  .graph-view {
     min-height: 380px;
     max-height: 380px;
   }

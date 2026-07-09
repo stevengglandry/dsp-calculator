@@ -125,6 +125,7 @@ export interface PlannerNode {
   recipeId?: string
   depth: number
   parentItemId?: string
+  parentNodeId?: string
   ratePerMinute: number
   cyclesPerMinute: number
   machineId?: string

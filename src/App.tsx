@@ -25,6 +25,7 @@ import type { Item, PlannerGoal, PlannerNode, PlannerSettings, Recipe } from './
 
 type PickerTab = 'items' | 'buildings'
 type PickerMode = 'goal' | 'override'
+type PlannerViewMode = 'tree' | 'graph'
 
 interface PickerState {
   mode: PickerMode
@@ -396,6 +397,7 @@ interface PlannerPanelProps {
 }
 
 function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
+  const [viewMode, setViewMode] = useState<PlannerViewMode>('tree')
   const tableRows = result.nodes.filter((node) => node.machineCount > 0).slice(0, 14)
 
   return (
@@ -403,22 +405,26 @@ function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
       <div className="panel-title-row">
         <h2>Production Chain</h2>
         <div className="view-toggle" aria-label="View mode">
-          <button className="active" type="button">
+          <button className={viewMode === 'tree' ? 'active' : ''} type="button" aria-pressed={viewMode === 'tree'} onClick={() => setViewMode('tree')}>
             <Boxes size={15} />
             Tree
           </button>
-          <button type="button">
+          <button className={viewMode === 'graph' ? 'active' : ''} type="button" aria-pressed={viewMode === 'graph'} onClick={() => setViewMode('graph')}>
             <CircleDot size={15} />
             Graph
           </button>
         </div>
       </div>
 
-      <div className="chain-view" aria-label="Production chain">
-        {result.nodes.slice(0, 34).map((node) => (
-          <ProductionNode key={node.id} node={node} settings={settings} onOpenRecipe={onOpenRecipe} />
-        ))}
-      </div>
+      {viewMode === 'tree' ? (
+        <div className="chain-view" aria-label="Production chain">
+          {result.nodes.slice(0, 34).map((node) => (
+            <ProductionNode key={node.id} node={node} settings={settings} onOpenRecipe={onOpenRecipe} />
+          ))}
+        </div>
+      ) : (
+        <ProductionGraph nodes={result.nodes} onOpenRecipe={onOpenRecipe} />
+      )}
 
       {result.warnings.length > 0 ? (
         <div className="warning-strip">
@@ -455,6 +461,111 @@ function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
         })}
       </div>
     </section>
+  )
+}
+
+interface GraphLayoutNode {
+  node: PlannerNode
+  x: number
+  y: number
+}
+
+interface GraphLayoutEdge {
+  id: string
+  from: GraphLayoutNode
+  to: GraphLayoutNode
+}
+
+function buildGraphLayout(nodes: PlannerNode[]) {
+  const visibleNodes = nodes.filter((node) => node.machineCount > 0 || node.warning).slice(0, 32)
+  const maxDepth = Math.min(
+    6,
+    visibleNodes.reduce((max, node) => Math.max(max, node.depth), 0),
+  )
+  const rowsByDepth = new Map<number, number>()
+  const layoutNodes: GraphLayoutNode[] = visibleNodes.map((node) => {
+    const column = Math.min(node.depth, maxDepth)
+    const row = rowsByDepth.get(column) ?? 0
+    rowsByDepth.set(column, row + 1)
+    return {
+      node,
+      x: 18 + column * 166,
+      y: 18 + row * 78,
+    }
+  })
+  const layoutNodeById = new Map(layoutNodes.map((layoutNode) => [layoutNode.node.id, layoutNode] as const))
+  const layoutEdges: GraphLayoutEdge[] = []
+
+  for (const layoutNode of layoutNodes) {
+    if (!layoutNode.node.parentNodeId) continue
+    const parentLayoutNode = layoutNodeById.get(layoutNode.node.parentNodeId)
+    if (!parentLayoutNode) continue
+    layoutEdges.push({
+      id: `${parentLayoutNode.node.id}-${layoutNode.node.id}`,
+      from: parentLayoutNode,
+      to: layoutNode,
+    })
+  }
+
+  const maxRows = Math.max(1, ...rowsByDepth.values())
+  return {
+    edges: layoutEdges,
+    height: Math.max(515, 36 + maxRows * 78),
+    nodes: layoutNodes,
+    width: 42 + (maxDepth + 1) * 166,
+  }
+}
+
+function ProductionGraph({ nodes, onOpenRecipe }: { nodes: PlannerNode[]; onOpenRecipe: (itemId: string) => void }) {
+  const layout = useMemo(() => buildGraphLayout(nodes), [nodes])
+
+  return (
+    <div className="graph-view" aria-label="Production graph">
+      <div className="graph-canvas" style={{ width: `${layout.width}px`, height: `${layout.height}px` }}>
+        <svg className="graph-edges" viewBox={`0 0 ${layout.width} ${layout.height}`} aria-hidden="true">
+          <defs>
+            <linearGradient id="graph-edge-gradient" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="rgba(84, 217, 229, 0.18)" />
+              <stop offset="100%" stopColor="rgba(84, 217, 229, 0.58)" />
+            </linearGradient>
+          </defs>
+          {layout.edges.map((edge) => {
+            const startX = edge.from.x + 146
+            const startY = edge.from.y + 31
+            const endX = edge.to.x
+            const endY = edge.to.y + 31
+            return (
+              <path
+                key={edge.id}
+                d={`M ${startX} ${startY} C ${startX + 42} ${startY}, ${endX - 42} ${endY}, ${endX} ${endY}`}
+                fill="none"
+                stroke="url(#graph-edge-gradient)"
+                strokeWidth="2"
+              />
+            )
+          })}
+        </svg>
+        {layout.nodes.map(({ node, x, y }) => {
+          const item = dspData.itemById.get(node.itemId)
+          return (
+            <button
+              key={node.id}
+              className={`graph-node ${node.machineCount === 0 ? 'raw' : ''}`}
+              type="button"
+              style={{ transform: `translate(${x}px, ${y}px)` }}
+              onClick={() => onOpenRecipe(node.itemId)}
+              title={item?.name ?? node.itemId}
+            >
+              <IconSprite icon={dspData.iconById.get(node.itemId)} label={itemName(node.itemId)} size={28} />
+              <span className="graph-node-copy">
+                <strong>{item?.name ?? node.itemId}</strong>
+                <small>{formatRate(node.ratePerMinute)}</small>
+              </span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
   )
 }
 

@@ -185,11 +185,12 @@ export function solvePlan(data: NormalizedDspData, goals: PlannerGoal[], setting
   let nodeIndex = 0
   let proliferatorPerMinute = 0
 
-  function createRawInput(itemId: string, ratePerMinute: number, depth: number, warning?: string) {
+  function createRawInput(itemId: string, ratePerMinute: number, depth: number, warning?: string, parentNodeId?: string) {
     const node: PlannerNode = {
       id: nodeId('raw', nodeIndex++),
       itemId,
       depth,
+      parentNodeId,
       ratePerMinute,
       cyclesPerMinute: 0,
       machineCount: 0,
@@ -209,7 +210,7 @@ export function solvePlan(data: NormalizedDspData, goals: PlannerGoal[], setting
     nodes.push(node)
   }
 
-  function expandDemand(itemId: string, requestedRate: number, depth: number, trail: string[], parentItemId?: string) {
+  function expandDemand(itemId: string, requestedRate: number, depth: number, trail: string[], parentItemId?: string, parentNodeId?: string) {
     if (requestedRate <= EPSILON) return
 
     const availableSurplus = surplus.get(itemId) ?? 0
@@ -223,21 +224,21 @@ export function solvePlan(data: NormalizedDspData, goals: PlannerGoal[], setting
     if (depth > settings.maximumDepth) {
       const warning = `Stopped expanding ${getItemName(data, itemId)} at depth ${settings.maximumDepth}.`
       warnings.push(warning)
-      createRawInput(itemId, requestedRate, depth, warning)
+      createRawInput(itemId, requestedRate, depth, warning, parentNodeId)
       return
     }
 
     if (trail.includes(itemId)) {
       const warning = `Cycle detected while expanding ${getItemName(data, itemId)}.`
       warnings.push(warning)
-      createRawInput(itemId, requestedRate, depth, warning)
+      createRawInput(itemId, requestedRate, depth, warning, parentNodeId)
       return
     }
 
     const recipe = chooseRecipe(data, itemId, settings)
     const outputAmount = recipe ? getRecipeOutput(recipe, itemId) : 0
     if (!recipe || outputAmount <= 0) {
-      createRawInput(itemId, requestedRate, depth)
+      createRawInput(itemId, requestedRate, depth, undefined, parentNodeId)
       return
     }
 
@@ -267,12 +268,15 @@ export function solvePlan(data: NormalizedDspData, goals: PlannerGoal[], setting
 
     proliferatorPerMinute += inputs.length * cyclesPerMinute * proliferators[settings.proliferatorId].sprayCostPerCycle
 
+    const currentNodeId = nodeId('node', nodeIndex++)
+
     nodes.push({
-      id: nodeId('node', nodeIndex++),
+      id: currentNodeId,
       itemId,
       recipeId: recipe.id,
       depth,
       parentItemId,
+      parentNodeId,
       ratePerMinute: requestedRate,
       cyclesPerMinute,
       machineId: machine?.id,
@@ -285,7 +289,7 @@ export function solvePlan(data: NormalizedDspData, goals: PlannerGoal[], setting
     })
 
     for (const input of inputs) {
-      expandDemand(input.itemId, input.ratePerMinute, depth + 1, [...trail, itemId], itemId)
+      expandDemand(input.itemId, input.ratePerMinute, depth + 1, [...trail, itemId], itemId, currentNodeId)
     }
   }
 

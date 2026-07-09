@@ -9,3 +9,10 @@ test('planner loads and recipe search works', async ({ page }) => {
   await page.getByPlaceholder('Search item or building').fill('processor')
   await expect(page.locator('.icon-tile[title="Processor"]').first()).toBeVisible()
 })
+
+test('graph tab renders graph nodes', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Graph' }).click()
+  await expect(page.getByLabel('Production graph')).toBeVisible()
+  await expect(page.locator('.graph-node').first()).toBeVisible()
+})
