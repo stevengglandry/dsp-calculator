@@ -151,13 +151,17 @@ function App() {
   }
 
   function removeGoal(goalId: string) {
-    setGoals((current) => (current.length === 1 ? current : current.filter((goal) => goal.id !== goalId)))
+    setGoals((current) => current.filter((goal) => goal.id !== goalId))
   }
 
   function handlePickerSelect(item: Item, recipe?: Recipe) {
     if (!picker) return
-    if (picker.mode === 'goal' && picker.goalId) {
-      updateGoalItem(picker.goalId, item.id)
+    if (picker.mode === 'goal') {
+      if (picker.goalId) {
+        updateGoalItem(picker.goalId, item.id)
+      } else {
+        addGoal(item.id)
+      }
     }
     if (picker.mode === 'override' && recipe) {
       setSettings((current) => replaceRecipeOverride(current, item.id, recipe.id))
@@ -232,12 +236,13 @@ function App() {
           <span>{selectedGoalItem.name}</span>
           <ChevronDown size={16} />
         </button>
-        <label className="rate-input">
+        <label className={`rate-input ${goals.length === 0 ? 'disabled' : ''}`}>
           <input
             value={goals[0]?.ratePerMinute ?? 60}
             type="number"
             min="1"
             step="1"
+            disabled={goals.length === 0}
             onChange={(event) => updateGoalRate(goals[0].id, Number(event.target.value))}
           />
           <span>/ min</span>
@@ -278,7 +283,7 @@ function App() {
           onRateChange={updateGoalRate}
           onRemoveGoal={removeGoal}
         />
-        <PlannerPanel result={result} settings={settings} onOpenRecipe={(itemId) => setPicker({ mode: 'override', itemId })} />
+        <PlannerPanel goals={goals} result={result} settings={settings} onOpenRecipe={(itemId) => setPicker({ mode: 'override', itemId })} />
         <SettingsPanel settings={settings} onSettingsChange={setSettings} />
       </section>
 
@@ -398,12 +403,13 @@ function MetricRow({ icon, label, value }: { icon: React.ReactNode; label: strin
 }
 
 interface PlannerPanelProps {
+  goals: PlannerGoal[]
   result: ReturnType<typeof solvePlan>
   settings: PlannerSettings
   onOpenRecipe: (itemId: string) => void
 }
 
-function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
+function PlannerPanel({ goals, result, settings, onOpenRecipe }: PlannerPanelProps) {
   const [viewMode, setViewMode] = useState<PlannerViewMode>('graph')
   const tableRows = result.nodes.filter((node) => node.machineCount > 0).slice(0, 14)
 
@@ -423,7 +429,13 @@ function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
         </div>
       </div>
 
-      {viewMode === 'tree' ? (
+      {goals.length === 0 ? (
+        <div className="empty-state" aria-label="Empty chain view">
+          <Boxes size={48} className="empty-icon" />
+          <h3>No production goals active</h3>
+          <p>Search for items above or click the selection dropdown to start planning your factory.</p>
+        </div>
+      ) : viewMode === 'tree' ? (
         <div className="chain-view" aria-label="Production chain">
           {result.nodes.slice(0, 34).map((node) => (
             <ProductionNode key={node.id} node={node} settings={settings} onOpenRecipe={onOpenRecipe} />
@@ -441,32 +453,34 @@ function PlannerPanel({ result, settings, onOpenRecipe }: PlannerPanelProps) {
         </div>
       ) : null}
 
-      <div className="summary-table" aria-label="Planner summary">
-        <div className="summary-head">
-          <span>Item / Building</span>
-          <span>Rate</span>
-          <span>Machines</span>
-          <span>Belt Demand</span>
-        </div>
-        {tableRows.map((node) => {
-          const item = dspData.itemById.get(node.itemId)
-          const machine = node.machineId ? dspData.itemById.get(node.machineId) : undefined
-          return (
-            <button key={node.id} className="summary-row" type="button" onClick={() => onOpenRecipe(node.itemId)}>
-              <span>
-                <IconSprite icon={dspData.iconById.get(node.itemId)} label={itemName(node.itemId)} size={24} />
+      {goals.length === 0 ? null : (
+        <div className="summary-table" aria-label="Planner summary">
+          <div className="summary-head">
+            <span>Item / Building</span>
+            <span>Rate</span>
+            <span>Machines</span>
+            <span>Belt Demand</span>
+          </div>
+          {tableRows.map((node) => {
+            const item = dspData.itemById.get(node.itemId)
+            const machine = node.machineId ? dspData.itemById.get(node.machineId) : undefined
+            return (
+              <button key={node.id} className="summary-row" type="button" onClick={() => onOpenRecipe(node.itemId)}>
                 <span>
-                  <strong>{item?.name ?? node.itemId}</strong>
-                  <small>{recipeLabel(node.recipeId ? dspData.recipeById.get(node.recipeId) : undefined)}</small>
+                  <IconSprite icon={dspData.iconById.get(node.itemId)} label={itemName(node.itemId)} size={24} />
+                  <span>
+                    <strong>{item?.name ?? node.itemId}</strong>
+                    <small>{recipeLabel(node.recipeId ? dspData.recipeById.get(node.recipeId) : undefined)}</small>
+                  </span>
                 </span>
-              </span>
-              <span>{formatRate(node.ratePerMinute)}</span>
-              <span>{machine ? `${formatCount(node.machineCount)} ${machine.name}` : formatCount(node.machineCount)}</span>
-              <span>{formatCount(node.beltLanes)} lanes</span>
-            </button>
-          )
-        })}
-      </div>
+                <span>{formatRate(node.ratePerMinute)}</span>
+                <span>{machine ? `${formatCount(node.machineCount)} ${machine.name}` : formatCount(node.machineCount)}</span>
+                <span>{formatCount(node.beltLanes)} lanes</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
     </section>
   )
 }

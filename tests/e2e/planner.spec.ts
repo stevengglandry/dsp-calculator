@@ -63,3 +63,13 @@ test('graph flows from raw inputs to outputs and supports zoom and drag', async 
   expect(dragEndBox!.x).toBeGreaterThan(dragStartBox!.x + 20)
   expect(dragEndBox!.y).toBeGreaterThan(dragStartBox!.y + 12)
 })
+
+test('allows removing the final output goal and showing empty state', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('button', { name: 'Remove Processor' })).toBeVisible()
+  await page.getByRole('button', { name: 'Remove Processor' }).click()
+  
+  await expect(page.getByLabel('Empty chain view')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'No production goals active' })).toBeVisible()
+  await expect(page.locator('.rate-input input')).toBeDisabled()
+})

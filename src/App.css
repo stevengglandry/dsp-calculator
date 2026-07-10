@@ -1223,3 +1223,48 @@ kbd {
     padding-left: 0;
   }
 }
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 64px 32px;
+  text-align: center;
+  color: #718096;
+}
+
+.empty-icon {
+  margin-bottom: 16px;
+  color: rgba(82, 107, 140, 0.4);
+  animation: float 3s ease-in-out infinite;
+}
+
+.empty-state h3 {
+  color: #eef5ff;
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+}
+
+.empty-state p {
+  font-size: 13px;
+  max-width: 320px;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.rate-input.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+  background: rgba(10, 18, 31, 0.5);
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
